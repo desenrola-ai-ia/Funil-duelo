@@ -1,0 +1,16 @@
+# Dependencies
+node_modules
+
+# Build
+.next
+out
+build
+dist
+
+# Generated
+*.d.ts
+package-lock.json
+
+# Misc
+.git
+.DS_Store
