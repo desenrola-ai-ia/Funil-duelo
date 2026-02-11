@@ -9,9 +9,10 @@ import type { ResponseTier, TierFeedback } from '@/types';
  */
 export const TIER_D_FEEDBACKS: string[] = [
   'ELA VAI TE BLOQUEAR',
-  'CRINGE MAXIMO',
-  'VOCE SE AUTO-SABOTOU',
-  'ELA JA PERDEU O TESAO',
+  'CRINGE DETECTADO',
+  'VOCÊ SE AUTO-SABOTOU',
+  'ISSO NÃO FUNCIONA',
+  'PERDEU A MÃO',
 ];
 
 /**
@@ -20,28 +21,30 @@ export const TIER_D_FEEDBACKS: string[] = [
 export const TIER_C_FEEDBACKS: string[] = [
   'MORREU A CONVERSA',
   'RESPOSTA SEM SAL',
-  'NAO CRIOU TENSAO',
-  'FICOU "AMIGO" DEMAIS',
+  'NÃO CRIOU TENSÃO',
+  'FICOU MORNO',
+  'GENÉRICO DEMAIS',
 ];
 
 /**
  * Feedbacks do Tier B (bom / verde)
+ * AJUSTADO: Feedbacks neutros, sem premiar demais
  */
 export const TIER_B_FEEDBACKS: string[] = [
-  'ELA TE DEU MORAL',
-  'BOA, VOCE MANTEVE A VIBE',
-  'RESPOSTA ACIMA DA MEDIA',
-  'VOCE NAO ESTRAGOU (isso e raro)',
+  'SEGUIU O RITMO',
+  'OK, MANTEVE A CONVERSA',
+  'ACIMA DA MÉDIA',
+  'PROGREDIU SEM ERRO',
 ];
 
 /**
  * Feedbacks do Tier A (insano / roxo/dourado)
  */
 export const TIER_A_FEEDBACKS: string[] = [
-  'ESSA FEZ ELA PINGAR',
   'MOVIMENTO DE MESTRE',
-  'ELA SENTIU A PRESSAO',
-  'VOCE JOGOU NO HARD MODE E GANHOU',
+  'ELA SENTIU A PRESSÃO',
+  'TIMING PERFEITO',
+  'INTELIGÊNCIA SOCIAL ALTA',
 ];
 
 /**
@@ -55,7 +58,7 @@ export const FEEDBACKS_BY_TIER: Record<ResponseTier, string[]> = {
 };
 
 /**
- * Configuracao visual por tier
+ * Configuração visual por tier
  */
 export const TIER_CONFIG: Record<ResponseTier, Omit<TierFeedback, 'message'>> = {
   A: {
@@ -81,7 +84,7 @@ export const TIER_CONFIG: Record<ResponseTier, Omit<TierFeedback, 'message'>> = 
 };
 
 /**
- * Retorna um feedback aleatorio para o tier
+ * Retorna um feedback aleatório para o tier
  */
 export function getRandomFeedback(tier: ResponseTier): TierFeedback {
   const feedbacks = FEEDBACKS_BY_TIER[tier];
@@ -95,8 +98,8 @@ export function getRandomFeedback(tier: ResponseTier): TierFeedback {
 }
 
 /**
- * Determina se o usuario vence a rodada baseado no tier
- * A e B = vitoria, C e D = derrota
+ * Determina se o usuário vence a rodada baseado no tier
+ * A e B = vitória, C e D = derrota
  */
 export function isWinningTier(tier: ResponseTier): boolean {
   return tier === 'A' || tier === 'B';

@@ -1,8 +1,12 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { CheckCircle, Download, Smartphone, ArrowRight } from 'lucide-react';
+import { CheckCircle, Download, Smartphone, ArrowRight, Copy, Check } from 'lucide-react';
 import { Button } from '@/components/ui';
+import { useSoundKit } from '@/hooks/useSoundKit';
+import { useHaptics } from '@/hooks/useHaptics';
+import { useAnalytics } from '@/hooks/useAnalytics';
+import { useState, useEffect } from 'react';
 import { GAME_CONFIG } from '@/constants';
 
 // ============================================
@@ -10,11 +14,37 @@ import { GAME_CONFIG } from '@/constants';
 // ============================================
 
 export default function OnboardingPage() {
+  const { play } = useSoundKit();
+  const { success, tap } = useHaptics();
+  const { track } = useAnalytics();
+  const [copied, setCopied] = useState(false);
+
+  // Efeitos no mount
+  useEffect(() => {
+    track('onboarding_complete');
+    play('win', { volumeOverride: 0.45 });
+    success();
+  }, [play, success, track]);
+
+  // Handler de copy
+  const handleCopy = async () => {
+    const message = "Opa! Testando o Desenrola AI aqui. Que top! 🔥";
+    try {
+      await navigator.clipboard.writeText(message);
+      setCopied(true);
+      play('ui-click');
+      tap();
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      // Fallback silencioso
+    }
+  };
+
   const steps = [
     {
       icon: Download,
       title: 'Baixe o app',
-      description: 'Disponivel na App Store e Google Play',
+      description: 'Disponivel na App Store é Google Play',
     },
     {
       icon: Smartphone,
@@ -24,7 +54,7 @@ export default function OnboardingPage() {
     {
       icon: ArrowRight,
       title: 'Comece a usar',
-      description: 'O Desenrola AI ja esta pronto pra te ajudar',
+      description: 'O Desenrola AI ja está pronto para te ajudar',
     },
   ];
 
@@ -57,8 +87,21 @@ export default function OnboardingPage() {
           transition={{ delay: 0.3 }}
           className="text-zinc-400 mb-8"
         >
-          Seus {GAME_CONFIG.FREE_TRIAL_DAYS} dias gratis foram ativados
+          Seus {GAME_CONFIG.FREE_TRIAL_DAYS} dias grátis foram ativados
         </motion.p>
+
+        {/* Badge */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.4 }}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-green-500/10 border border-green-500/30 rounded-full mb-6"
+        >
+          <CheckCircle className="w-4 h-4 text-green-400" />
+          <span className="text-sm font-medium text-green-300">
+            Modo Teclado Desbloqueado
+          </span>
+        </motion.div>
 
         {/* Steps */}
         <motion.div
@@ -68,7 +111,7 @@ export default function OnboardingPage() {
           className="bg-zinc-900 rounded-2xl p-6 mb-8 text-left"
         >
           <h2 className="text-sm font-semibold text-zinc-500 uppercase tracking-wide mb-4">
-            Proximos passos
+            Próximos passos
           </h2>
 
           <div className="space-y-4">
@@ -125,11 +168,42 @@ export default function OnboardingPage() {
           </Button>
         </motion.div>
 
+        {/* Botão de copiar mensagem */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.9 }}
+          className="mt-8"
+        >
+          <Button
+            onClick={handleCopy}
+            variant="ghost"
+            size="lg"
+            fullWidth
+            className="font-medium"
+          >
+            {copied ? (
+              <>
+                <Check className="w-4 h-4 mr-2" />
+                Mensagem Copiada!
+              </>
+            ) : (
+              <>
+                <Copy className="w-4 h-4 mr-2" />
+                Copiar mensagem pronta
+              </>
+            )}
+          </Button>
+          <p className="text-xs text-center text-zinc-500 mt-2">
+            Use para testar o teclado nas suas conversas
+          </p>
+        </motion.div>
+
         {/* Support */}
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 0.8 }}
+          transition={{ delay: 1.0 }}
           className="text-zinc-600 text-sm mt-8"
         >
           Precisa de ajuda? Entre em contato pelo suporte no app.

@@ -24,12 +24,23 @@ export type RoundResult = 'win' | 'loss' | null;
 export type ResponseType = 'typed' | 'ai_suggestion';
 
 /**
+ * Nivel de dificuldade da persona/round
+ */
+export type Difficulty = 'EASY' | 'MEDIUM' | 'HARD';
+
+/**
+ * Mecanica de selecao de cada round
+ */
+export type RoundMechanic = 'roulette' | 'cards' | 'direct';
+
+/**
  * Mensagem do chat
  */
 export interface ChatMessage {
   id: string;
   sender: 'user' | 'persona';
   content: string;
+  time?: string; // Horario da mensagem (ex: "22:41")
   isLastMessage?: boolean;
 }
 
@@ -43,6 +54,9 @@ export interface Persona {
   bio: string;
   image?: string;
   context: string;
+  storyImage?: string;
+  storyText?: string;
+  difficulty: Difficulty;
 }
 
 /**
@@ -79,6 +93,29 @@ export interface GameState {
   opponentScore: number;
   isGameOver: boolean;
   hasWon: boolean | null;
+  roundResults: Record<number, boolean>;
+  selectedPersonas: Record<number, PersonaData>;
+}
+
+/**
+ * Dados completos de uma persona (persona + chat + sugestoes)
+ */
+export interface PersonaData {
+  persona: Persona;
+  chat: ChatMessage[];
+  aiSuggestions: AISuggestion[];
+}
+
+/**
+ * Configuracao visual/mecanica de cada round
+ */
+export interface RoundConfig {
+  id: number;
+  mechanic: RoundMechanic;
+  difficulty: Difficulty;
+  label: string;
+  emoji: string;
+  description: string;
 }
 
 /**

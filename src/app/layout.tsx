@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
+import { AudioUnlocker } from '@/components/audio-unlocker';
+import { ExitIntentProvider } from '@/components/exit-intent-provider';
 
 // ============================================
 // FONTS
@@ -49,6 +51,8 @@ export default function RootLayout({
       <body
         className={`${inter.variable} font-sans antialiased bg-zinc-950 text-white min-h-screen`}
       >
+        <ExitIntentProvider />
+        <AudioUnlocker />
         {children}
       </body>
     </html>

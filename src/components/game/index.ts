@@ -6,3 +6,4 @@ export * from './feedback-display';
 export * from './ai-suggestions';
 export * from './response-input';
 export * from './scratch-card';
+export * from './card-picker';
