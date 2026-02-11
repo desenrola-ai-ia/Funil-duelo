@@ -1,5 +1,6 @@
 // ============================================
 // DESENROLA - Stripe Webhook Handler
+// Forwards events to backend for user creation + local logging
 // ============================================
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -7,6 +8,8 @@ import Stripe from 'stripe';
 import { writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
+
+const BACKEND_URL = process.env.BACKEND_URL || 'https://dating-app-production-ac43.up.railway.app';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2026-01-28.clover',
@@ -51,6 +54,9 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    // ============================================
+    // Local analytics logging
+    // ============================================
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
@@ -64,6 +70,16 @@ export async function POST(request: NextRequest) {
           payment_status: session.payment_status,
           source: 'stripe_webhook',
         });
+
+        // Mark lead as converted (fire and forget)
+        const customerEmail = session.customer_email || session.customer_details?.email;
+        if (customerEmail) {
+          fetch(`${BACKEND_URL}/lead-converted`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: customerEmail }),
+          }).catch(err => console.error('Lead conversion tracking error:', err));
+        }
         break;
       }
 
@@ -92,7 +108,6 @@ export async function POST(request: NextRequest) {
       }
 
       default:
-        // Unhandled event type - ignore
         break;
     }
   } catch (error) {

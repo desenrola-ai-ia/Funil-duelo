@@ -1,12 +1,13 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { CheckCircle, Download, Smartphone, ArrowRight, Copy, Check } from 'lucide-react';
+import { CheckCircle, Download, Smartphone, ArrowRight, Copy, Check, Mail } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { useSoundKit } from '@/hooks/useSoundKit';
 import { useHaptics } from '@/hooks/useHaptics';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { GAME_CONFIG } from '@/constants';
 
 // ============================================
@@ -18,6 +19,21 @@ export default function OnboardingPage() {
   const { success, tap } = useHaptics();
   const { track } = useAnalytics();
   const [copied, setCopied] = useState(false);
+  const [customerEmail, setCustomerEmail] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+
+  // Fetch session info to get customer email
+  useEffect(() => {
+    const sessionId = searchParams.get('session_id');
+    if (!sessionId) return;
+
+    fetch(`/api/checkout/session?session_id=${sessionId}`)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data?.email) setCustomerEmail(data.email);
+      })
+      .catch(() => {});
+  }, [searchParams]);
 
   // Efeitos no mount
   useEffect(() => {
@@ -95,13 +111,26 @@ export default function OnboardingPage() {
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.4 }}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-green-500/10 border border-green-500/30 rounded-full mb-6"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-green-500/10 border border-green-500/30 rounded-full mb-4"
         >
           <CheckCircle className="w-4 h-4 text-green-400" />
           <span className="text-sm font-medium text-green-300">
             Modo Teclado Desbloqueado
           </span>
         </motion.div>
+
+        {/* Account info */}
+        {customerEmail && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.45 }}
+            className="flex items-center justify-center gap-2 mb-6 text-sm text-zinc-500"
+          >
+            <Mail className="w-3.5 h-3.5" />
+            <span>Sua conta: <span className="text-zinc-300">{customerEmail}</span></span>
+          </motion.div>
+        )}
 
         {/* Steps */}
         <motion.div
