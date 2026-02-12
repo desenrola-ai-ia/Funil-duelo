@@ -6,15 +6,24 @@ import { Button } from '@/components/ui';
 import { useSoundKit } from '@/hooks/useSoundKit';
 import { useHaptics } from '@/hooks/useHaptics';
 import { useAnalytics } from '@/hooks/useAnalytics';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { GAME_CONFIG } from '@/constants';
+import { metaTrack, metaTrackCustom } from '@/lib/metaTrack';
 
 // ============================================
 // ONBOARDING PAGE (Post-Checkout Success)
 // ============================================
 
 export default function OnboardingPage() {
+  return (
+    <Suspense>
+      <OnboardingContent />
+    </Suspense>
+  );
+}
+
+function OnboardingContent() {
   const { play } = useSoundKit();
   const { success, tap } = useHaptics();
   const { track } = useAnalytics();
@@ -22,7 +31,7 @@ export default function OnboardingPage() {
   const [customerEmail, setCustomerEmail] = useState<string | null>(null);
   const searchParams = useSearchParams();
 
-  // Fetch session info to get customer email
+  // Fetch session info + Meta Pixel Purchase
   useEffect(() => {
     const sessionId = searchParams.get('session_id');
     if (!sessionId) return;
@@ -30,7 +39,22 @@ export default function OnboardingPage() {
     fetch(`/api/checkout/session?session_id=${sessionId}`)
       .then(res => res.ok ? res.json() : null)
       .then(data => {
-        if (data?.email) setCustomerEmail(data.email);
+        if (!data) return;
+        if (data.email) setCustomerEmail(data.email);
+
+        // Meta Pixel: Purchase — anti-refire por session_id
+        const isPaid = data.status === 'paid' || data.subscriptionStatus === 'trialing' || data.subscriptionStatus === 'active';
+        const key = `purchase_sent_${sessionId}`;
+        if (isPaid && !localStorage.getItem(key)) {
+          const value = data.amountTotal ? data.amountTotal / 100 : 0;
+          metaTrack('Purchase', {
+            value,
+            currency: (data.currency || 'brl').toUpperCase(),
+            content_name: data.plan || 'unknown',
+            trial: true,
+          });
+          localStorage.setItem(key, '1');
+        }
       })
       .catch(() => {});
   }, [searchParams]);
@@ -175,6 +199,7 @@ export default function OnboardingPage() {
             size="xl"
             fullWidth
             onClick={() => {
+              metaTrackCustom('AppDownloadClick', { store: 'ios' });
               // TODO: Add App Store link
               window.open('#', '_blank');
             }}
@@ -188,6 +213,7 @@ export default function OnboardingPage() {
             size="lg"
             fullWidth
             onClick={() => {
+              metaTrackCustom('AppDownloadClick', { store: 'android' });
               // TODO: Add Play Store link
               window.open('#', '_blank');
             }}

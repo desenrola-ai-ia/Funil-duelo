@@ -16,10 +16,11 @@ import {
   getRandomFeedback,
   isWinningTier,
 } from '@/constants';
-import type { ResponseType, AISuggestion, TierFeedback, ResponseTier, ChatMessage } from '@/types';
+import type { ResponseType, AISuggestion, TierFeedback, ResponseTier, ChatMessage, SuggestionTone } from '@/types';
 import { useSoundKit } from '@/hooks/useSoundKit';
 import { useHaptics } from '@/hooks/useHaptics';
 import { useAnalytics } from '@/hooks/useAnalytics';
+import { metaTrackCustom } from '@/lib/metaTrack';
 
 // ============================================
 // ROUND PAGE - /duelo/round
@@ -27,6 +28,15 @@ import { useAnalytics } from '@/hooks/useAnalytics';
 // ============================================
 
 type GamePhase = 'playing' | 'analyzing' | 'feedback' | 'transition';
+
+const TONES: { id: SuggestionTone; label: string; emoji: string }[] = [
+  { id: 'casual',  label: 'Leve',     emoji: '😎' },
+  { id: 'flirty',  label: 'Provocar', emoji: '😏' },
+  { id: 'funny',   label: 'Humor',    emoji: '😂' },
+  { id: 'curious', label: 'Conhecer', emoji: '🤔' },
+  { id: 'rescue',  label: 'Resgatar', emoji: '🔄' },
+  { id: 'bold',    label: 'Avançar',  emoji: '🎯' },
+];
 
 export default function DueloRoundPage() {
   const router = useRouter();
@@ -74,12 +84,9 @@ export default function DueloRoundPage() {
     }
   }, [personaData, router]);
 
-  // Detecta se o round já foi respondido (volta via browser back etc.)
-  useEffect(() => {
-    if (currentRoundState?.status === 'completed' && phase === 'playing') {
-      setShowAlreadyAnswered(true);
-    }
-  }, [currentRoundState?.status, phase]);
+  // O useState initializer já detecta round completo no mount (browser back).
+  // NÃO usar useEffect aqui — submitResponse marca 'completed' durante o fluxo
+  // normal e causaria o modal "já respondeu" ao invés de mostrar o feedback.
 
   const handleAlreadyAnsweredContinue = () => {
     setShowAlreadyAnswered(false);
@@ -191,11 +198,16 @@ export default function DueloRoundPage() {
     
     // Track events
     track('tier_result', { round: currentRound, tier });
-    track(`round${currentRound}_complete` as any, { 
-      round: currentRound, 
-      tier, 
+    track(`round${currentRound}_complete` as any, {
+      round: currentRound,
+      tier,
       usedAI: type === 'ai_suggestion',
-      responseType: type 
+      responseType: type
+    });
+    metaTrackCustom('GameRoundComplete', {
+      round: currentRound,
+      tier,
+      usedAI: type === 'ai_suggestion',
     });
     
     setCurrentTier(tier);
@@ -276,6 +288,10 @@ export default function DueloRoundPage() {
   const [liveSuggestions, setLiveSuggestions] = useState<AISuggestion[]>([]);
   const [generatedSuggestions, setGeneratedSuggestions] = useState<AISuggestion[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [selectedTone, setSelectedTone] = useState<SuggestionTone>('casual');
+  const [recommendedTone, setRecommendedTone] = useState<SuggestionTone | null>(null);
+  const [responseLength, setResponseLength] = useState<'short' | 'normal'>('normal');
+  const [useEmoji, setUseEmoji] = useState(true);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const aiButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -350,11 +366,20 @@ export default function DueloRoundPage() {
             content: msg.content,
           })),
           roundNumber: currentRound,
+          tone: selectedTone,
+          length: responseLength,
+          useEmoji,
         }),
       });
 
       if (!res.ok) throw new Error('API error');
       const data = await res.json();
+
+      if (data.recommendedTone) {
+        setRecommendedTone(data.recommendedTone);
+        // Auto-select recommended tone on first load
+        setSelectedTone(data.recommendedTone);
+      }
 
       if (data.suggestions && data.suggestions.length > 0) {
         setLiveSuggestions(data.suggestions);
@@ -384,9 +409,10 @@ export default function DueloRoundPage() {
     }
   };
 
-  const generateNewSuggestions = async () => {
+  const generateNewSuggestions = async (toneOverride?: SuggestionTone) => {
     if (!personaData || isGenerating) return;
 
+    const tone = toneOverride || selectedTone;
     setIsGenerating(true);
     play('ui-click', { volumeOverride: 0.2 });
     tap();
@@ -405,6 +431,9 @@ export default function DueloRoundPage() {
             content: msg.content,
           })),
           roundNumber: currentRound,
+          tone,
+          length: responseLength,
+          useEmoji,
         }),
       });
 
@@ -412,13 +441,26 @@ export default function DueloRoundPage() {
 
       const data = await res.json();
       if (data.suggestions && data.suggestions.length > 0) {
-        setGeneratedSuggestions(data.suggestions);
+        // Replace main suggestions when tone changes, otherwise show as "new"
+        if (toneOverride) {
+          setLiveSuggestions(data.suggestions);
+          setGeneratedSuggestions([]);
+        } else {
+          setGeneratedSuggestions(data.suggestions);
+        }
         play('sparkle', { volumeOverride: 0.3 });
       }
     } catch (error) {
       console.error('Error generating suggestions:', error);
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleToneChange = (tone: SuggestionTone) => {
+    setSelectedTone(tone);
+    if (suggestionsLoaded) {
+      generateNewSuggestions(tone);
     }
   };
 
@@ -676,7 +718,72 @@ export default function DueloRoundPage() {
                                     Teclado Desenrola AI
                                   </span>
                                 </div>
-                                {liveSuggestions.map((suggestion, index) => (
+
+                                {/* Recommended tone */}
+                                {recommendedTone && recommendedTone !== selectedTone && (
+                                  <div className="flex items-center gap-1.5 mb-2">
+                                    <span className="text-xs text-[#075E54]">★</span>
+                                    <span className="text-xs text-gray-500">
+                                      Recomendado:{' '}
+                                      <button onClick={() => handleToneChange(recommendedTone)} className="text-[#075E54] font-medium">
+                                        {TONES.find(t => t.id === recommendedTone)?.emoji} {TONES.find(t => t.id === recommendedTone)?.label}
+                                      </button>
+                                    </span>
+                                  </div>
+                                )}
+
+                                {/* Tone chips */}
+                                <div className="flex gap-1.5 overflow-x-auto pb-2 -mx-1 px-1 scrollbar-hide">
+                                  {TONES.map((tone) => (
+                                    <button
+                                      key={tone.id}
+                                      onClick={() => handleToneChange(tone.id)}
+                                      className={cn(
+                                        'flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap border transition-all shrink-0',
+                                        selectedTone === tone.id
+                                          ? 'bg-[#075E54] text-white border-[#075E54]'
+                                          : 'bg-[#075E54]/10 border-[#075E54]/30 text-[#075E54] hover:bg-[#075E54]/20'
+                                      )}
+                                    >
+                                      <span>{tone.emoji}</span>
+                                      <span>{tone.label}</span>
+                                    </button>
+                                  ))}
+                                </div>
+
+                                {/* Length + Emoji toggles */}
+                                <div className="flex items-center justify-between mb-3">
+                                  <div className="flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5">
+                                    <button
+                                      onClick={() => { setResponseLength('short'); if (suggestionsLoaded) generateNewSuggestions(); }}
+                                      className={cn('px-2 py-1 rounded-md text-xs transition-all', responseLength === 'short' ? 'bg-white shadow-sm text-gray-800 font-medium' : 'text-gray-500')}
+                                    >
+                                      Curta
+                                    </button>
+                                    <button
+                                      onClick={() => { setResponseLength('normal'); if (suggestionsLoaded) generateNewSuggestions(); }}
+                                      className={cn('px-2 py-1 rounded-md text-xs transition-all', responseLength === 'normal' ? 'bg-white shadow-sm text-gray-800 font-medium' : 'text-gray-500')}
+                                    >
+                                      Normal
+                                    </button>
+                                  </div>
+                                  <button
+                                    onClick={() => { setUseEmoji(!useEmoji); if (suggestionsLoaded) generateNewSuggestions(); }}
+                                    className={cn('flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all', useEmoji ? 'text-gray-600' : 'text-gray-400 bg-gray-100')}
+                                  >
+                                    <span>{useEmoji ? '😀' : '🚫'}</span>
+                                    <span>Emoji</span>
+                                  </button>
+                                </div>
+
+                                {isGenerating && (
+                                  <div className="flex items-center justify-center gap-2 py-3">
+                                    <Sparkles className="w-4 h-4 text-[#075E54] animate-spin" />
+                                    <span className="text-sm text-[#075E54]">Gerando...</span>
+                                  </div>
+                                )}
+
+                                {!isGenerating && liveSuggestions.map((suggestion, index) => (
                                   <motion.button
                                     key={suggestion.id}
                                     initial={{ opacity: 0, x: -20 }}
@@ -724,21 +831,21 @@ export default function DueloRoundPage() {
                                 )}
 
                                 {/* Generate new suggestions button */}
-                                <button
-                                  onClick={generateNewSuggestions}
-                                  disabled={isGenerating}
-                                  className={cn(
-                                    'w-full flex items-center justify-center gap-2 py-2.5 mt-2 rounded-xl border border-dashed transition-all',
-                                    'border-[#075E54]/30 text-[#075E54]',
-                                    'hover:border-[#075E54]/60 hover:bg-[#DCF8C6]/50',
-                                    'active:scale-[0.98] disabled:opacity-50'
-                                  )}
-                                >
-                                  <RefreshCw className={cn('w-4 h-4', isGenerating && 'animate-spin')} />
-                                  <span className="text-sm font-medium">
-                                    {isGenerating ? 'Gerando...' : 'Gerar novas respostas'}
-                                  </span>
-                                </button>
+                                {!isGenerating && (
+                                  <button
+                                    onClick={() => generateNewSuggestions()}
+                                    disabled={isGenerating}
+                                    className={cn(
+                                      'w-full flex items-center justify-center gap-2 py-2.5 mt-2 rounded-xl border border-dashed transition-all',
+                                      'border-[#075E54]/30 text-[#075E54]',
+                                      'hover:border-[#075E54]/60 hover:bg-[#DCF8C6]/50',
+                                      'active:scale-[0.98] disabled:opacity-50'
+                                    )}
+                                  >
+                                    <RefreshCw className="w-4 h-4" />
+                                    <span className="text-sm font-medium">Gerar novas respostas</span>
+                                  </button>
+                                )}
 
                                 <p className="text-[#075E54] text-xs text-center pt-1">
                                   Respostas geradas pela IA baseadas no contexto
@@ -1127,7 +1234,72 @@ export default function DueloRoundPage() {
                                     Teclado Desenrola AI
                                   </span>
                                 </div>
-                                {liveSuggestions.map((suggestion, index) => (
+
+                                {/* Recommended tone */}
+                                {recommendedTone && recommendedTone !== selectedTone && (
+                                  <div className="flex items-center gap-1.5 mb-2">
+                                    <span className="text-xs text-purple-600">★</span>
+                                    <span className="text-xs text-gray-500">
+                                      Recomendado:{' '}
+                                      <button onClick={() => handleToneChange(recommendedTone)} className="text-purple-600 font-medium">
+                                        {TONES.find(t => t.id === recommendedTone)?.emoji} {TONES.find(t => t.id === recommendedTone)?.label}
+                                      </button>
+                                    </span>
+                                  </div>
+                                )}
+
+                                {/* Tone chips */}
+                                <div className="flex gap-1.5 overflow-x-auto pb-2 -mx-1 px-1 scrollbar-hide">
+                                  {TONES.map((tone) => (
+                                    <button
+                                      key={tone.id}
+                                      onClick={() => handleToneChange(tone.id)}
+                                      className={cn(
+                                        'flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap border transition-all shrink-0',
+                                        selectedTone === tone.id
+                                          ? 'bg-purple-600 text-white border-purple-600'
+                                          : 'bg-purple-100 border-purple-300 text-purple-600 hover:bg-purple-200'
+                                      )}
+                                    >
+                                      <span>{tone.emoji}</span>
+                                      <span>{tone.label}</span>
+                                    </button>
+                                  ))}
+                                </div>
+
+                                {/* Length + Emoji toggles */}
+                                <div className="flex items-center justify-between mb-3">
+                                  <div className="flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5">
+                                    <button
+                                      onClick={() => { setResponseLength('short'); if (suggestionsLoaded) generateNewSuggestions(); }}
+                                      className={cn('px-2 py-1 rounded-md text-xs transition-all', responseLength === 'short' ? 'bg-white shadow-sm text-gray-800 font-medium' : 'text-gray-500')}
+                                    >
+                                      Curta
+                                    </button>
+                                    <button
+                                      onClick={() => { setResponseLength('normal'); if (suggestionsLoaded) generateNewSuggestions(); }}
+                                      className={cn('px-2 py-1 rounded-md text-xs transition-all', responseLength === 'normal' ? 'bg-white shadow-sm text-gray-800 font-medium' : 'text-gray-500')}
+                                    >
+                                      Normal
+                                    </button>
+                                  </div>
+                                  <button
+                                    onClick={() => { setUseEmoji(!useEmoji); if (suggestionsLoaded) generateNewSuggestions(); }}
+                                    className={cn('flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all', useEmoji ? 'text-gray-600' : 'text-gray-400 bg-gray-100')}
+                                  >
+                                    <span>{useEmoji ? '😀' : '🚫'}</span>
+                                    <span>Emoji</span>
+                                  </button>
+                                </div>
+
+                                {isGenerating && (
+                                  <div className="flex items-center justify-center gap-2 py-3">
+                                    <Sparkles className="w-4 h-4 text-purple-600 animate-spin" />
+                                    <span className="text-sm text-purple-600">Gerando...</span>
+                                  </div>
+                                )}
+
+                                {!isGenerating && liveSuggestions.map((suggestion, index) => (
                                   <motion.button
                                     key={suggestion.id}
                                     initial={{ opacity: 0, x: -20 }}
@@ -1175,21 +1347,21 @@ export default function DueloRoundPage() {
                                 )}
 
                                 {/* Generate new suggestions button */}
-                                <button
-                                  onClick={generateNewSuggestions}
-                                  disabled={isGenerating}
-                                  className={cn(
-                                    'w-full flex items-center justify-center gap-2 py-2.5 mt-2 rounded-xl border border-dashed transition-all',
-                                    'border-purple-300 text-purple-600',
-                                    'hover:border-purple-500 hover:bg-purple-50',
-                                    'active:scale-[0.98] disabled:opacity-50'
-                                  )}
-                                >
-                                  <RefreshCw className={cn('w-4 h-4', isGenerating && 'animate-spin')} />
-                                  <span className="text-sm font-medium">
-                                    {isGenerating ? 'Gerando...' : 'Gerar novas respostas'}
-                                  </span>
-                                </button>
+                                {!isGenerating && (
+                                  <button
+                                    onClick={() => generateNewSuggestions()}
+                                    disabled={isGenerating}
+                                    className={cn(
+                                      'w-full flex items-center justify-center gap-2 py-2.5 mt-2 rounded-xl border border-dashed transition-all',
+                                      'border-purple-300 text-purple-600',
+                                      'hover:border-purple-500 hover:bg-purple-50',
+                                      'active:scale-[0.98] disabled:opacity-50'
+                                    )}
+                                  >
+                                    <RefreshCw className="w-4 h-4" />
+                                    <span className="text-sm font-medium">Gerar novas respostas</span>
+                                  </button>
+                                )}
 
                                 <p className="text-purple-500 text-xs text-center pt-1">
                                   Respostas geradas pela IA baseadas no contexto
@@ -1510,7 +1682,72 @@ export default function DueloRoundPage() {
                                   Teclado Desenrola AI
                                 </span>
                               </div>
-                              {liveSuggestions.map((suggestion, index) => (
+
+                              {/* Recommended tone */}
+                              {recommendedTone && recommendedTone !== selectedTone && (
+                                <div className="flex items-center gap-1.5 mb-2">
+                                  <span className="text-xs text-pink-600">★</span>
+                                  <span className="text-xs text-gray-500">
+                                    Recomendado:{' '}
+                                    <button onClick={() => handleToneChange(recommendedTone)} className="text-pink-600 font-medium">
+                                      {TONES.find(t => t.id === recommendedTone)?.emoji} {TONES.find(t => t.id === recommendedTone)?.label}
+                                    </button>
+                                  </span>
+                                </div>
+                              )}
+
+                              {/* Tone chips */}
+                              <div className="flex gap-1.5 overflow-x-auto pb-2 -mx-1 px-1 scrollbar-hide">
+                                {TONES.map((tone) => (
+                                  <button
+                                    key={tone.id}
+                                    onClick={() => handleToneChange(tone.id)}
+                                    className={cn(
+                                      'flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap border transition-all shrink-0',
+                                      selectedTone === tone.id
+                                        ? 'bg-pink-600 text-white border-pink-600'
+                                        : 'bg-pink-100 border-pink-300 text-pink-600 hover:bg-pink-200'
+                                    )}
+                                  >
+                                    <span>{tone.emoji}</span>
+                                    <span>{tone.label}</span>
+                                  </button>
+                                ))}
+                              </div>
+
+                              {/* Length + Emoji toggles */}
+                              <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5">
+                                  <button
+                                    onClick={() => { setResponseLength('short'); if (suggestionsLoaded) generateNewSuggestions(); }}
+                                    className={cn('px-2 py-1 rounded-md text-xs transition-all', responseLength === 'short' ? 'bg-white shadow-sm text-gray-800 font-medium' : 'text-gray-500')}
+                                  >
+                                    Curta
+                                  </button>
+                                  <button
+                                    onClick={() => { setResponseLength('normal'); if (suggestionsLoaded) generateNewSuggestions(); }}
+                                    className={cn('px-2 py-1 rounded-md text-xs transition-all', responseLength === 'normal' ? 'bg-white shadow-sm text-gray-800 font-medium' : 'text-gray-500')}
+                                  >
+                                    Normal
+                                  </button>
+                                </div>
+                                <button
+                                  onClick={() => { setUseEmoji(!useEmoji); if (suggestionsLoaded) generateNewSuggestions(); }}
+                                  className={cn('flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all', useEmoji ? 'text-gray-600' : 'text-gray-400 bg-gray-100')}
+                                >
+                                  <span>{useEmoji ? '😀' : '🚫'}</span>
+                                  <span>Emoji</span>
+                                </button>
+                              </div>
+
+                              {isGenerating && (
+                                <div className="flex items-center justify-center gap-2 py-3">
+                                  <Sparkles className="w-4 h-4 text-pink-600 animate-spin" />
+                                  <span className="text-sm text-pink-600">Gerando...</span>
+                                </div>
+                              )}
+
+                              {!isGenerating && liveSuggestions.map((suggestion, index) => (
                                 <motion.button
                                   key={suggestion.id}
                                   initial={{ opacity: 0, x: -20 }}
@@ -1558,21 +1795,21 @@ export default function DueloRoundPage() {
                               )}
 
                               {/* Generate new suggestions button */}
-                              <button
-                                onClick={generateNewSuggestions}
-                                disabled={isGenerating}
-                                className={cn(
-                                  'w-full flex items-center justify-center gap-2 py-2.5 mt-2 rounded-xl border border-dashed transition-all',
-                                  'border-pink-300 text-pink-600',
-                                  'hover:border-pink-500 hover:bg-pink-50',
-                                  'active:scale-[0.98] disabled:opacity-50'
-                                )}
-                              >
-                                <RefreshCw className={cn('w-4 h-4', isGenerating && 'animate-spin')} />
-                                <span className="text-sm font-medium">
-                                  {isGenerating ? 'Gerando...' : 'Gerar novas respostas'}
-                                </span>
-                              </button>
+                              {!isGenerating && (
+                                <button
+                                  onClick={() => generateNewSuggestions()}
+                                  disabled={isGenerating}
+                                  className={cn(
+                                    'w-full flex items-center justify-center gap-2 py-2.5 mt-2 rounded-xl border border-dashed transition-all',
+                                    'border-pink-300 text-pink-600',
+                                    'hover:border-pink-500 hover:bg-pink-50',
+                                    'active:scale-[0.98] disabled:opacity-50'
+                                  )}
+                                >
+                                  <RefreshCw className="w-4 h-4" />
+                                  <span className="text-sm font-medium">Gerar novas respostas</span>
+                                </button>
+                              )}
 
                               <p className="text-purple-600 text-xs text-center pt-1">
                                 Respostas geradas pela IA baseadas no contexto

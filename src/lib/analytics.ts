@@ -18,7 +18,10 @@ export type EventName =
   | 'result_view'
   | 'reward_view'
   | 'reward_reveal'
+  | 'reward_benefits_visible'
   | 'checkout_view'
+  | 'checkout_email_entered'
+  | 'checkout_started'
   | 'checkout_complete'
   | 'onboarding_complete'
   // Gameplay

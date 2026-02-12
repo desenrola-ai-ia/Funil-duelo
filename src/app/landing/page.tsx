@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Brain, Zap, ChevronRight } from 'lucide-react';
@@ -9,6 +10,7 @@ import { useGameStore } from '@/stores';
 import { useSoundKit } from '@/hooks/useSoundKit';
 import { useHaptics } from '@/hooks/useHaptics';
 import { useAnalytics } from '@/hooks/useAnalytics';
+import { metaTrack, metaTrackCustom } from '@/lib/metaTrack';
 
 // ============================================
 // LANDING PAGE - Funil direto (v3)
@@ -21,12 +23,32 @@ export default function LandingPage() {
   const { tap } = useHaptics();
   const { track } = useAnalytics();
 
+  const scrollTrackedRef = useRef(false);
+
+  // Meta Pixel: ViewContent on load + ScrollDepth 50%
+  useEffect(() => {
+    metaTrack('ViewContent', { content_name: 'Landing' });
+
+    const handleScroll = () => {
+      if (scrollTrackedRef.current) return;
+      const scrollPct = window.scrollY / (document.body.scrollHeight - window.innerHeight);
+      if (scrollPct >= 0.5) {
+        metaTrackCustom('ScrollDepth', { percent: 50 });
+        scrollTrackedRef.current = true;
+        window.removeEventListener('scroll', handleScroll);
+      }
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
   const handlePointerDown = () => {
     play('ui-click', { cooldownMs: 80 });
     tap();
   };
 
   const handleStart = () => {
+    metaTrack('Lead', { content_name: 'Landing CTA - Start Game' });
     play('whoosh');
     track('game_start');
     resetGame();

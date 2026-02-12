@@ -197,28 +197,20 @@ class AudioManager {
   // ============================================
 
   unlock(): void {
-    if (this.unlocked || this.unlocking) {
-      console.log('🔓 Audio already unlocked or unlocking');
-      return;
-    }
+    if (this.unlocked || this.unlocking) return;
 
     this.unlocking = true;
-    console.log('🔓 [AudioManager] Unlocking audio (FAST mode - only first instances)...');
 
     try {
       // 1. Resume AudioContext
       if (this.audioContext && this.audioContext.state === 'suspended') {
-        this.audioContext.resume()
-          .then(() => console.log('✅ AudioContext resumed'))
-          .catch((e) => console.warn('❌ AudioContext resume failed:', e));
+        this.audioContext.resume().catch(() => {});
       }
 
-      // 2. FAST UNLOCK: Only first instance of each sound (3x faster!)
-      // Other instances will unlock lazily on first use
-      this.pools.forEach((pool, soundName) => {
-        const instance = pool.instances[0]; // Only first!
-        const { audio } = instance;
-
+      // 2. Unlock each audio element — keep muted, DON'T restore volume in callback
+      // Volume is only restored when play() is actually called by game code
+      this.pools.forEach((pool) => {
+        const { audio } = pool.instances[0];
         audio.volume = 0;
         audio.muted = true;
 
@@ -226,23 +218,14 @@ class AudioManager {
           .then(() => {
             audio.pause();
             audio.currentTime = 0;
-            audio.muted = false;
-            audio.volume = this.masterVolume;
-            console.log(`✅ Unlocked: ${soundName}`);
+            // DON'T unmute or change volume here — prevents audio leak on Safari
           })
-          .catch((e) => {
-            audio.muted = false;
-            console.warn(`❌ Failed to unlock ${soundName}:`, e.name);
-          });
+          .catch(() => {});
       });
 
-      // CRITICAL: Mark as unlocked IMMEDIATELY
       this.unlocked = true;
       this.unlocking = false;
-      console.log('✅ [AudioManager] Fast unlock complete (6 sounds unlocked)');
-
-    } catch (error) {
-      console.error('❌ [AudioManager] Unlock error:', error);
+    } catch {
       this.unlocking = false;
     }
   }
@@ -251,55 +234,17 @@ class AudioManager {
   // PLAY
   // ============================================
 
-  play(name: SoundName, options: PlayOptions = {}, context: PlayContext = {}): void {
-    const timestamp = new Date().toISOString();
-    const route = context.route || (typeof window !== 'undefined' ? window.location.pathname : 'unknown');
-
-    // Log entry
-    console.log(`
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎵 [AudioManager.play()] CALLED
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Sound:        ${name}
-  Event:        ${context.event || 'unknown'}
-  Route:        ${route}
-  Component:    ${context.component || 'unknown'}
-  Timestamp:    ${timestamp}
-  -------------------------------------------
-  soundEnabled: ${this.soundEnabled}
-  masterVolume: ${this.masterVolume}
-  volumeOver:   ${options.volumeOverride ?? 'none'}
-  cooldownMs:   ${options.cooldownMs ?? DEFAULT_COOLDOWNS[name]}
-  -------------------------------------------
-  User Gesture: ${typeof navigator !== 'undefined' && 'userActivation' in navigator ? (navigator as any).userActivation?.hasBeenActive : 'N/A'}
-  Visibility:   ${typeof document !== 'undefined' ? document.visibilityState : 'N/A'}
-  AudioContext: ${this.audioContext?.state || 'none'}
-  Unlocked:     ${this.unlocked}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-`);
-
-    // Check if sound enabled
-    if (!this.soundEnabled) {
-      console.log('⛔ Sound disabled in settings');
-      return;
-    }
+  play(name: SoundName, options: PlayOptions = {}, _context: PlayContext = {}): void {
+    if (!this.soundEnabled) return;
 
     // Get pool
     const pool = this.pools.get(name);
-    if (!pool) {
-      console.warn(`❌ Sound pool not found: ${name}`);
-      return;
-    }
+    if (!pool) return;
 
     // Check cooldown
     const cooldown = options.cooldownMs ?? DEFAULT_COOLDOWNS[name];
     const now = Date.now();
-    const timeSinceLastPlay = now - pool.lastPlayTime;
-
-    if (timeSinceLastPlay < cooldown) {
-      console.log(`⏱️ COOLDOWN BLOCKED: ${timeSinceLastPlay}ms < ${cooldown}ms`);
-      return;
-    }
+    if (now - pool.lastPlayTime < cooldown) return;
 
     // Get next instance
     const instance = pool.instances[pool.currentIndex];
@@ -307,28 +252,12 @@ class AudioManager {
     pool.lastPlayTime = now;
 
     const { audio, loaded, error } = instance;
+    if (error) return;
 
-    // Check if loaded
-    if (error) {
-      console.error(`❌ Audio file error: ${name}`);
-      return;
+    if (!loaded && audio.readyState < 3) {
+      audio.addEventListener('canplaythrough', () => { instance.loaded = true; }, { once: true });
     }
 
-    // CRITICAL: Check if loaded but DON'T WAIT (would lose user gesture)
-    if (!loaded) {
-      console.warn(`⚠️ Audio not fully loaded yet: ${name} (readyState: ${audio.readyState}), playing anyway to preserve user gesture`);
-
-      // Set up listener to mark as loaded when ready (for next time)
-      if (audio.readyState < 3) {
-        const onCanPlay = () => {
-          instance.loaded = true;
-          console.log(`✅ Audio finished loading: ${name} (readyState: ${audio.readyState})`);
-        };
-        audio.addEventListener('canplaythrough', onCanPlay, { once: true });
-      }
-    }
-
-    // ALWAYS play immediately to preserve user gesture context
     this.playAudioNow(name, audio, options);
   }
 
@@ -342,65 +271,17 @@ class AudioManager {
       ? Math.max(0, Math.min(1, options.volumeOverride))
       : this.masterVolume;
 
+    // CRITICAL: Ensure unmuted (unlock leaves them muted)
+    audio.muted = false;
     audio.volume = finalVolume;
-
-    // Set playback rate
     audio.playbackRate = options.playbackRate ?? 1;
-
-    // Reset and play
     audio.currentTime = 0;
 
-    console.log(`
-🔊🔊🔊 TOCANDO AGORA: ${name.toUpperCase()} 🔊🔊🔊
-🎵 ATTEMPTING PLAY:
-  sound:        ${name}
-  volume:       ${audio.volume}
-  readyState:   ${audio.readyState} (${this.getReadyStateLabel(audio.readyState)})
-  networkState: ${audio.networkState} (${this.getNetworkStateLabel(audio.networkState)})
-  paused:       ${audio.paused}
-  currentTime:  ${audio.currentTime}
-  src:          ${audio.src}
-`);
-
-    const playPromise = audio.play();
-
-    if (playPromise) {
-      playPromise
-        .then(() => {
-          console.log(`✅✅✅ SOM TOCANDO COM SUCESSO: ${name.toUpperCase()} ✅✅✅`);
-        })
-        .catch((error) => {
-          console.error(`
-❌ PLAY FAILED: ${name}
-  Error Name:    ${error.name}
-  Error Message: ${error.message}
-  readyState:    ${audio.readyState}
-  networkState:  ${audio.networkState}
-  src:           ${audio.src}
-  unlocked:      ${this.unlocked}
-`);
-
-          // Try unlock if not unlocked
-          if (!this.unlocked && error.name === 'NotAllowedError') {
-            console.log('🔄 Attempting auto-unlock...');
-            this.unlock();
-          }
-        });
-    }
-  }
-
-  // ============================================
-  // HELPERS
-  // ============================================
-
-  private getReadyStateLabel(state: number): string {
-    const labels = ['HAVE_NOTHING', 'HAVE_METADATA', 'HAVE_CURRENT_DATA', 'HAVE_FUTURE_DATA', 'HAVE_ENOUGH_DATA'];
-    return labels[state] || 'UNKNOWN';
-  }
-
-  private getNetworkStateLabel(state: number): string {
-    const labels = ['NETWORK_EMPTY', 'NETWORK_IDLE', 'NETWORK_LOADING', 'NETWORK_NO_SOURCE'];
-    return labels[state] || 'UNKNOWN';
+    audio.play()?.catch((error) => {
+      if (!this.unlocked && error.name === 'NotAllowedError') {
+        this.unlock();
+      }
+    });
   }
 
   // ============================================

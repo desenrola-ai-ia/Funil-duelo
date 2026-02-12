@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import { logApiCost } from '@/lib/api-cost-logger';
 
 // ============================================
 // API Route: /api/analyze
@@ -257,6 +258,11 @@ Analise a resposta considerando o rapport_level=${rapportLevel}. Marque as flags
       temperature: 0.2,
       max_tokens: 300,
     });
+
+    // Log cost (fire-and-forget)
+    if (completion.usage) {
+      logApiCost('analyze', 'gpt-4o-mini', completion.usage);
+    }
 
     const responseText = completion.choices[0]?.message?.content || '';
 

@@ -14,7 +14,7 @@ import { GameplayTab } from './components/gameplay-tab';
 
 // Map tabs → sections needed from API
 const TAB_SECTIONS: Record<TabId, SectionName[]> = {
-  overview: ['overview', 'funnel_detailed', 'timeline'],
+  overview: ['overview', 'funnel_detailed', 'timeline', 'api_costs'],
   traffic: ['traffic'],
   devices: ['devices'],
   geo: ['geo'],
@@ -134,6 +134,7 @@ export default function DashboardPage() {
             overview={metrics.overview}
             funnel={metrics.funnel_detailed}
             timeline={metrics.timeline}
+            apiCosts={metrics.api_costs}
           />
         )}
         {activeTab === 'traffic' && <TrafficTab traffic={metrics.traffic} />}

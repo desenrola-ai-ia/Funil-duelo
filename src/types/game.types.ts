@@ -150,6 +150,11 @@ export interface CheckoutData {
 /**
  * Analytics events
  */
+/**
+ * Tom das sugestões da IA
+ */
+export type SuggestionTone = 'casual' | 'flirty' | 'funny' | 'curious' | 'rescue' | 'bold';
+
 export type AnalyticsEvent =
   | 'funnel_started'
   | 'round_started'

@@ -25,12 +25,22 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'session_id is required' }, { status: 400 });
     }
 
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    const session = await stripe.checkout.sessions.retrieve(sessionId, {
+      expand: ['subscription'],
+    });
+
+    // Extrair valor e status da subscription
+    const sub = session.subscription as Stripe.Subscription | null;
+    const subStatus = sub?.status; // active, trialing, etc.
+    const amountTotal = session.amount_total; // em centavos
 
     return NextResponse.json({
       email: session.customer_email || session.customer_details?.email,
       status: session.payment_status,
+      subscriptionStatus: subStatus || null,
       plan: session.metadata?.plan,
+      amountTotal: amountTotal ?? null,
+      currency: session.currency || 'brl',
     });
   } catch (error: any) {
     console.error('Session retrieve error:', error.message);

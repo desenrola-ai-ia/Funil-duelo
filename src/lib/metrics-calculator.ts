@@ -149,6 +149,21 @@ export interface GameplayMetrics {
   avgTimeToRevealSec: number;
 }
 
+export interface ApiCostsMetrics {
+  totalCalls: number;
+  totalTokens: number;
+  totalCostUSD: number;
+  analyzeCalls: number;
+  analyzeCostUSD: number;
+  suggestCalls: number;
+  suggestCostUSD: number;
+  costToday: number;
+  cost7d: number;
+  cost30d: number;
+  avgCostPerUser: number;
+  daily: { date: string; calls: number; costUSD: number }[];
+}
+
 export interface MetricsV2 {
   overview?: OverviewMetrics;
   funnel_detailed?: FunnelDetailedMetrics;
@@ -159,6 +174,7 @@ export interface MetricsV2 {
   users?: UsersMetrics;
   timeline?: TimelineMetrics;
   gameplay?: GameplayMetrics;
+  api_costs?: ApiCostsMetrics;
 }
 
 export type SectionName = keyof MetricsV2;
@@ -781,7 +797,74 @@ function calcGameplay(events: AnalyticsEvent[]): GameplayMetrics {
 // MAIN CALCULATOR
 // ============================================
 
-const SECTION_CALCULATORS: Record<SectionName, (events: AnalyticsEvent[]) => any> = {
+// ============================================
+// API COSTS CALCULATOR (uses separate data source)
+// ============================================
+
+import type { ApiCostEntry } from './api-cost-logger';
+
+export function calcApiCosts(entries: ApiCostEntry[], uniqueUsersTotal: number): ApiCostsMetrics {
+  const now = Date.now();
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  const d7 = now - 7 * 24 * 60 * 60 * 1000;
+  const d30 = now - 30 * 24 * 60 * 60 * 1000;
+
+  let totalCalls = 0, totalTokens = 0, totalCostUSD = 0;
+  let analyzeCalls = 0, analyzeCostUSD = 0;
+  let suggestCalls = 0, suggestCostUSD = 0;
+  let costToday = 0, cost7d = 0, cost30d = 0;
+
+  const dailyMap = new Map<string, { calls: number; costUSD: number }>();
+
+  // Pre-fill last 30 days
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(now - i * 24 * 60 * 60 * 1000);
+    const key = dateKey(d.getTime());
+    dailyMap.set(key, { calls: 0, costUSD: 0 });
+  }
+
+  for (const e of entries) {
+    totalCalls++;
+    totalTokens += e.totalTokens;
+    totalCostUSD += e.costUSD;
+
+    if (e.endpoint === 'analyze') { analyzeCalls++; analyzeCostUSD += e.costUSD; }
+    if (e.endpoint === 'suggest') { suggestCalls++; suggestCostUSD += e.costUSD; }
+
+    if (e.timestamp >= todayStart.getTime()) costToday += e.costUSD;
+    if (e.timestamp >= d7) cost7d += e.costUSD;
+    if (e.timestamp >= d30) cost30d += e.costUSD;
+
+    const key = dateKey(e.timestamp);
+    if (dailyMap.has(key)) {
+      const day = dailyMap.get(key)!;
+      day.calls++;
+      day.costUSD += e.costUSD;
+    }
+  }
+
+  const avgCostPerUser = uniqueUsersTotal > 0 ? totalCostUSD / uniqueUsersTotal : 0;
+
+  const daily = [...dailyMap.entries()].map(([date, d]) => ({
+    date,
+    calls: d.calls,
+    costUSD: Math.round(d.costUSD * 10000) / 10000,
+  }));
+
+  return {
+    totalCalls, totalTokens,
+    totalCostUSD: Math.round(totalCostUSD * 10000) / 10000,
+    analyzeCalls, analyzeCostUSD: Math.round(analyzeCostUSD * 10000) / 10000,
+    suggestCalls, suggestCostUSD: Math.round(suggestCostUSD * 10000) / 10000,
+    costToday: Math.round(costToday * 10000) / 10000,
+    cost7d: Math.round(cost7d * 10000) / 10000,
+    cost30d: Math.round(cost30d * 10000) / 10000,
+    avgCostPerUser: Math.round(avgCostPerUser * 10000) / 10000,
+    daily,
+  };
+}
+
+const SECTION_CALCULATORS: Partial<Record<SectionName, (events: AnalyticsEvent[]) => any>> = {
   overview: calcOverview,
   funnel_detailed: calcFunnelDetailed,
   geo: calcGeo,

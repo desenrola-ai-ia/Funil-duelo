@@ -10,6 +10,7 @@ import { useHaptics } from '@/hooks/useHaptics';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import { useGameStore } from '@/stores';
 import { ROUTES, UI_TEXTS, GAME_CONFIG, ROUND_CONFIGS } from '@/constants';
+import { metaTrack } from '@/lib/metaTrack';
 import type { ResponseTier } from '@/types';
 
 // ============================================
@@ -44,6 +45,7 @@ export default function DueloResultPage() {
 
     track('result_view');
     track('final_victory', { win: hasWon });
+    metaTrack('CompleteRegistration', { content_name: 'Game Complete' });
 
     if (hasWon) {
       play('win');
