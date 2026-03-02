@@ -200,8 +200,7 @@ function OnboardingContent() {
             fullWidth
             onClick={() => {
               metaTrackCustom('AppDownloadClick', { store: 'ios' });
-              // TODO: Add App Store link
-              window.open('#', '_blank');
+              window.open('https://apps.apple.com/us/app/desenrola-ai/id6758812243?l=pt-BR', '_blank');
             }}
           >
             <Download className="w-5 h-5 mr-2" />
@@ -214,12 +213,11 @@ function OnboardingContent() {
             fullWidth
             onClick={() => {
               metaTrackCustom('AppDownloadClick', { store: 'android' });
-              // TODO: Add Play Store link
-              window.open('#', '_blank');
+              window.open('https://desenrola-ia.web.app/desenrola-ai.apk', '_blank');
             }}
           >
             <Download className="w-5 h-5 mr-2" />
-            Baixar no Google Play
+            Baixar para Android
           </Button>
         </motion.div>
 
