@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Trophy, Skull, Gift, Brain, Pen, Check, X } from 'lucide-react';
+import { Trophy, Skull, Gift, Brain, Pen, Check, X, Star } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { useSoundKit } from '@/hooks/useSoundKit';
 import { useHaptics } from '@/hooks/useHaptics';
@@ -11,7 +11,7 @@ import { useAnalytics } from '@/hooks/useAnalytics';
 import { useGameStore } from '@/stores';
 import { ROUTES, UI_TEXTS, GAME_CONFIG, ROUND_CONFIGS } from '@/constants';
 import { metaTrack } from '@/lib/metaTrack';
-import type { ResponseTier } from '@/types';
+import type { ResponseTier, Difficulty } from '@/types';
 
 // ============================================
 // RESULT PAGE - /duelo/result
@@ -24,6 +24,51 @@ const TIER_LABELS: Record<ResponseTier, { label: string; color: string }> = {
   C: { label: 'Fraca', color: 'text-yellow-400' },
   D: { label: 'Ruim', color: 'text-red-400' },
 };
+
+const DIFFICULTY_LABELS: Record<Difficulty, { label: string; color: string; bg: string }> = {
+  EASY: { label: 'Fácil', color: 'text-green-400', bg: 'bg-green-500/15' },
+  MEDIUM: { label: 'Média', color: 'text-yellow-400', bg: 'bg-yellow-500/15' },
+  HARD: { label: 'Difícil', color: 'text-red-400', bg: 'bg-red-500/15' },
+};
+
+/**
+ * Gera a mensagem explicativa de por que o usuario venceu/perdeu
+ * quando o placar visivel contradiz o resultado
+ */
+function getResultExplanation(
+  hasWon: boolean | null,
+  playerScore: number,
+  opponentScore: number,
+  rounds: { result: string | null; persona: { difficulty: Difficulty } }[],
+): string | null {
+  const r3Won = rounds[2]?.result === 'win';
+  const r2Won = rounds[1]?.result === 'win';
+  const totalWins = rounds.filter((r) => r.result === 'win').length;
+
+  // Vitoria com placar menor — precisa explicar
+  if (hasWon && playerScore < opponentScore) {
+    if (r3Won) {
+      return 'Você acertou a rodada mais difícil. Quando a mina é 10/10 e difícil, acertar ali vale mais que os outros rounds juntos.';
+    }
+    if (r2Won) {
+      return 'Você venceu a rodada média. Saber lidar com menina cú doce já te coloca acima do Cara Médio.';
+    }
+  }
+
+  // Vitoria com placar empatado — reforçar
+  if (hasWon && playerScore === opponentScore) {
+    if (r3Won) {
+      return 'Empate no placar, mas você acertou a rodada difícil. Rounds mais difíceis pesam mais.';
+    }
+  }
+
+  // Derrota total
+  if (!hasWon && totalWins === 0) {
+    return 'Você errou nas 3 rodadas. Sem repertório, nem a fácil sai.';
+  }
+
+  return null;
+}
 
 export default function DueloResultPage() {
   const router = useRouter();
@@ -74,6 +119,9 @@ export default function DueloResultPage() {
   const aiWins = aiRounds.filter((r) => r.result === 'win').length;
   const noAiWins = noAiRounds.filter((r) => r.result === 'win').length;
   const usedAiAtLeastOnce = aiRounds.length > 0;
+
+  // Explicação contextual quando placar contradiz resultado
+  const resultExplanation = getResultExplanation(hasWon, playerScore, opponentScore, rounds);
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center p-4 bg-zinc-950">
@@ -157,6 +205,26 @@ export default function DueloResultPage() {
           </div>
         </motion.div>
 
+        {/* ── Explicação do resultado (quando placar contradiz) ── */}
+        {resultExplanation && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+            className={`border rounded-xl p-4 mb-5 ${
+              hasWon
+                ? 'bg-green-500/10 border-green-500/20'
+                : 'bg-red-500/10 border-red-500/20'
+            }`}
+          >
+            <p className={`text-sm text-center leading-relaxed ${
+              hasWon ? 'text-green-200' : 'text-red-200'
+            }`}>
+              {resultExplanation}
+            </p>
+          </motion.div>
+        )}
+
         {/* ── Recap dos Rounds ── */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -174,6 +242,8 @@ export default function DueloResultPage() {
               const tier = round.responseTier;
               const tierInfo = tier ? TIER_LABELS[tier] : null;
               const won = round.result === 'win';
+              const isHardRound = config.difficulty === 'HARD';
+              const diffInfo = DIFFICULTY_LABELS[config.difficulty];
 
               return (
                 <motion.div
@@ -181,7 +251,11 @@ export default function DueloResultPage() {
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.7 + index * 0.1 }}
-                  className="flex items-center gap-3"
+                  className={`flex items-center gap-2.5 rounded-lg px-2 py-1.5 ${
+                    isHardRound
+                      ? 'bg-zinc-800/50 ring-1 ring-yellow-500/20'
+                      : ''
+                  }`}
                 >
                   {/* Resultado */}
                   <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${
@@ -203,6 +277,12 @@ export default function DueloResultPage() {
                         {round.persona.name || config.label}
                       </span>
                     </div>
+                  </div>
+
+                  {/* Dificuldade */}
+                  <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold ${diffInfo.bg} ${diffInfo.color}`}>
+                    {isHardRound && <Star className="w-2.5 h-2.5" />}
+                    <span>{diffInfo.label}</span>
                   </div>
 
                   {/* Tier */}

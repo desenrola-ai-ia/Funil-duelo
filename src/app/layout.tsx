@@ -27,6 +27,9 @@ export const metadata: Metadata = {
     description: 'Voce ganharia do cara medio nessa conversa?',
     type: 'website',
   },
+  other: {
+    'facebook-domain-verification': 'hau5c4v7o0z6ohas0vo19iwduncir1',
+  },
 };
 
 export const viewport: Viewport = {
@@ -49,9 +52,11 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" className="dark">
       <head>
+        <meta name="facebook-domain-verification" content="hau5c4v7o0z6ohas0vo19iwduncir1" />
         <script
           dangerouslySetInnerHTML={{
             __html: `
+              // Meta Pixel
               !function(f,b,e,v,n,t,s)
               {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
               n.callMethod.apply(n,arguments):n.queue.push(arguments)};
@@ -60,6 +65,7 @@ export default function RootLayout({
               t.src=v;s=b.getElementsByTagName(e)[0];
               s.parentNode.insertBefore(t,s)}(window, document,'script',
               'https://connect.facebook.net/en_US/fbevents.js');
+              fbq('set', 'autoConfig', false, '2012101536189098');
               fbq('init', '2012101536189098');
               fbq('track', 'PageView');
             `,
