@@ -52,7 +52,7 @@ function OnboardingContent() {
             currency: (data.currency || 'brl').toUpperCase(),
             content_name: data.plan || 'unknown',
             trial: true,
-          });
+          }, `stripe_${sessionId}`);
           localStorage.setItem(key, '1');
         }
       })

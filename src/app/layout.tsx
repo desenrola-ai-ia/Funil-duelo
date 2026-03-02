@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { AudioUnlocker } from '@/components/audio-unlocker';
 import { ExitIntentProvider } from '@/components/exit-intent-provider';
+import { MetaPageViewCapi } from '@/components/meta-pageview-capi';
 
 // ============================================
 // FONTS
@@ -67,7 +68,8 @@ export default function RootLayout({
               'https://connect.facebook.net/en_US/fbevents.js');
               fbq('set', 'autoConfig', false, '2012101536189098');
               fbq('init', '2012101536189098');
-              fbq('track', 'PageView');
+              window.__metaPageViewId = 'pv_' + Date.now() + '_' + Math.random().toString(36).substr(2,9);
+              fbq('track', 'PageView', {}, {eventID: window.__metaPageViewId});
             `,
           }}
         />
@@ -85,6 +87,7 @@ export default function RootLayout({
       >
         <ExitIntentProvider />
         <AudioUnlocker />
+        <MetaPageViewCapi />
         {children}
       </body>
     </html>

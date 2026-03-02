@@ -8,6 +8,7 @@ import Stripe from 'stripe';
 import { writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
+import { sendEvent } from '@/lib/metaCapi';
 
 const BACKEND_URL = process.env.BACKEND_URL || 'https://dating-app-production-ac43.up.railway.app';
 
@@ -80,6 +81,24 @@ export async function POST(request: NextRequest) {
             body: JSON.stringify({ email: customerEmail }),
           }).catch(err => console.error('Lead conversion tracking error:', err));
         }
+
+        // CAPI: Purchase event (server-side, most reliable)
+        const amountTotal = session.amount_total ? session.amount_total / 100 : 0;
+        const currency = (session.currency || 'brl').toUpperCase();
+        sendEvent({
+          eventName: 'Purchase',
+          eventId: `stripe_${session.id}`,
+          customData: {
+            value: amountTotal,
+            currency,
+            content_name: session.metadata?.plan || 'unknown',
+            content_type: 'subscription',
+          },
+          userData: {
+            email: customerEmail || undefined,
+          },
+        }).catch(() => {});
+
         break;
       }
 
