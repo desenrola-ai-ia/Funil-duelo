@@ -84,7 +84,7 @@ function OnboardingContent() {
     {
       icon: Download,
       title: 'Baixe o app',
-      description: 'Disponivel na App Store é Google Play',
+      description: 'Disponível Para Iphone e Android',
     },
     {
       icon: Smartphone,
@@ -213,7 +213,7 @@ function OnboardingContent() {
             fullWidth
             onClick={() => {
               metaTrackCustom('AppDownloadClick', { store: 'android' });
-              window.open('https://desenrola-ia.web.app/desenrola-ai.apk', '_blank');
+              window.open('https://desenrolaai.site/desenrola-ai.apk', '_blank');
             }}
           >
             <Download className="w-5 h-5 mr-2" />
